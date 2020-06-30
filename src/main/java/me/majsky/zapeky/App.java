@@ -8,7 +8,6 @@ import com.google.gson.GsonBuilder;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 
-import javax.security.auth.callback.TextInputCallback;
 import javax.swing.*;
 import java.io.File;
 import java.io.IOException;
@@ -16,8 +15,7 @@ import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.nio.file.*;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -29,12 +27,12 @@ public class App {
 
     public static void main(String[] args) {
         gson = new GsonBuilder().setPrettyPrinting().create();
-
+/*
         if(true){
             createPack();
             return;
         }
-
+*/
         PackInfo local = null, remote = null;
 
         File localInfo = new File("pack.json");
@@ -63,6 +61,8 @@ public class App {
             ProgressMonitor monitor = new ProgressMonitor(null, "Prebieha update modov...", "", 0, remote.files.length);
 
             for(int i=0; i < remote.files.length; i++){
+                if(monitor.isCanceled())
+                    System.exit(2);
                 String rfn = remote.files[i];
                 monitor.setNote(rfn);
 
@@ -78,14 +78,45 @@ public class App {
                 }
 
                 if(needsDL){
-                    try(InputStream is = url(rfn).openStream()){
-                        Files.copy(is, Path.of(rfn));
+                    try(InputStream is = url(rfn.replace("\\", "/")).openStream()){
+                        File f = new File(rfn);
+                        if(f.getParentFile() != null && !f.getParentFile().exists())
+                            f.getParentFile().mkdirs();
+
+                        Files.copy(is, f.toPath(), StandardCopyOption.REPLACE_EXISTING);
                     } catch (IOException e) {
                         e.printStackTrace();
+                        showError(e.toString());
+                        System.exit(1);
                     }
                 }
 
                 monitor.setProgress(i);
+            }
+            monitor.close();
+            try {
+                Files.write(Paths.get("pack.json"), gson.toJson(remote).getBytes(StandardCharsets.UTF_8), StandardOpenOption.WRITE);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
+            if(local == null)
+                return;
+
+            for(String l : local.files){
+                boolean delete = true;
+
+                for(String r : remote.files){
+                    if(r.equals(l)){
+                        delete = false;
+                        break;
+                    }
+                }
+
+                if(!delete)
+                    continue;
+
+                new File(l).delete();
             }
         }
     }
@@ -124,7 +155,7 @@ public class App {
             i.files = files.toArray(new String[files.size()]);
             i.version = -200;
 
-            Files.writeString(Path.of("pack/info.json"), gson.toJson(i));
+            Files.write(Paths.get("pack/info.json"), gson.toJson(i).getBytes(StandardCharsets.UTF_8), StandardOpenOption.WRITE);
 
         } catch (IOException e) {
             e.printStackTrace();
