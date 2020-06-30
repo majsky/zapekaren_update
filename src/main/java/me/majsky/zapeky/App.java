@@ -5,13 +5,21 @@ package me.majsky.zapeky;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 
+import javax.security.auth.callback.TextInputCallback;
 import javax.swing.*;
+import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 public class App {
 
@@ -19,14 +27,66 @@ public class App {
 
     private static Gson gson;
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) {
         gson = new GsonBuilder().setPrettyPrinting().create();
 
+        if(true){
+            createPack();
+            return;
+        }
+
+        PackInfo local = null, remote = null;
+
+        File localInfo = new File("pack.json");
+
+        if(localInfo.exists()){
+            try {
+                String sLocal = FileUtils.readFileToString(localInfo, StandardCharsets.UTF_8);
+                local = gson.fromJson(sLocal, PackInfo.class);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
         try {
-            IOUtils.toString(url("info.json"), StandardCharsets.UTF_8);
+            String sRemote = IOUtils.toString(url("info.json"), StandardCharsets.UTF_8);
+            remote = gson.fromJson(sRemote, PackInfo.class);
         }catch (IOException e){
             showError("Nepodarilo sa skontrolovat aktualizacie\n(nejde internet?)");
+            if(local == null)
+                System.exit(1);
+
             return;
+        }
+
+        if(local == null || local.version != remote.version){
+            ProgressMonitor monitor = new ProgressMonitor(null, "Prebieha update modov...", "", 0, remote.files.length);
+
+            for(int i=0; i < remote.files.length; i++){
+                String rfn = remote.files[i];
+                monitor.setNote(rfn);
+
+                boolean needsDL = true;
+
+                if(local != null) {
+                    for (String s : local.files) {
+                        if (s.equals(rfn)) {
+                            needsDL = false;
+                            break;
+                        }
+                    }
+                }
+
+                if(needsDL){
+                    try(InputStream is = url(rfn).openStream()){
+                        Files.copy(is, Path.of(rfn));
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+
+                monitor.setProgress(i);
+            }
         }
     }
 
@@ -43,5 +103,31 @@ public class App {
 
     private static void showError(String s){
         JOptionPane.showMessageDialog(null, s, "ZapekarenUpdate", JOptionPane.ERROR_MESSAGE);
+    }
+
+    private static void createPack(){
+        File root = new File("pack");
+
+        List<String> files = new ArrayList<>();
+
+        try {
+            Files.walk(root.toPath())
+                    .filter(Files::isRegularFile)
+                    .forEach(f -> {
+                        if(f.toString().endsWith("info.json"))
+                            return;
+                        files.add(f.toString().substring(5));
+                    });
+
+            PackInfo i = new PackInfo();
+
+            i.files = files.toArray(new String[files.size()]);
+            i.version = -200;
+
+            Files.writeString(Path.of("pack/info.json"), gson.toJson(i));
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 }
