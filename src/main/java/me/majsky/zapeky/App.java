@@ -27,12 +27,12 @@ public class App {
 
     public static void main(String[] args) {
         gson = new GsonBuilder().setPrettyPrinting().create();
-/*
-        if(true){
+
+        if(args.length > 0 && args[0].equalsIgnoreCase("c")){
             createPack();
             return;
         }
-*/
+
         PackInfo local = null, remote = null;
 
         File localInfo = new File("pack.json");
@@ -60,6 +60,9 @@ public class App {
         if(local == null || local.version != remote.version){
             ProgressMonitor monitor = new ProgressMonitor(null, "Prebieha update modov...", "", 0, remote.files.length);
 
+            monitor.setMillisToDecideToPopup(0);
+            monitor.setMillisToPopup(0);
+
             for(int i=0; i < remote.files.length; i++){
                 if(monitor.isCanceled())
                     System.exit(2);
@@ -68,7 +71,7 @@ public class App {
 
                 boolean needsDL = true;
 
-                if(local != null) {
+                if(local != null && !rfn.startsWith("config")) {
                     for (String s : local.files) {
                         if (s.equals(rfn)) {
                             needsDL = false;
@@ -95,7 +98,7 @@ public class App {
             }
             monitor.close();
             try {
-                Files.write(Paths.get("pack.json"), gson.toJson(remote).getBytes(StandardCharsets.UTF_8), StandardOpenOption.WRITE);
+                Files.write(Paths.get("pack.json"), gson.toJson(remote).getBytes(StandardCharsets.UTF_8), StandardOpenOption.WRITE, StandardOpenOption.CREATE);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -116,7 +119,9 @@ public class App {
                 if(!delete)
                     continue;
 
-                new File(l).delete();
+                if(!new File(l).delete()){
+                    showError("Nepodarilo sa zmazat " + l + "\n skús to ručne");
+                }
             }
         }
     }
@@ -155,7 +160,9 @@ public class App {
             i.files = files.toArray(new String[files.size()]);
             i.version = -200;
 
-            Files.write(Paths.get("pack/info.json"), gson.toJson(i).getBytes(StandardCharsets.UTF_8), StandardOpenOption.WRITE);
+            System.out.println(gson.toJson(i));
+
+            Files.write(Paths.get("pack/info.json"), gson.toJson(i).getBytes(StandardCharsets.UTF_8), StandardOpenOption.WRITE, StandardOpenOption.CREATE);
 
         } catch (IOException e) {
             e.printStackTrace();
